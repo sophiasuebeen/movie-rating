@@ -582,7 +582,7 @@ function RankingPage() {
                       <div>
                         <h3 style={{ fontSize: 18, lineHeight: 1.35, margin: 0 }}>{movie.title}</h3>
                         <p style={{ color: colors.steel, fontSize: 14, lineHeight: 1.45, margin: '4px 0 0' }}>
-                          {bucket.label} - position {movie.position}
+                          {bucket.label} - position {movie.position} - approx. {movie.score.toFixed(1)}/10
                         </p>
                       </div>
                     </li>

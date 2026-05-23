@@ -10,6 +10,29 @@ const bucketOrder = [
   { bucket: 'fine', label: 'It was fine' },
   { bucket: 'disliked', label: "I didn't like it" },
 ];
+const scoreRanges = {
+  liked: { min: 7.0, max: 10.0 },
+  fine: { min: 4.0, max: 6.9 },
+  disliked: { min: 1.0, max: 3.9 },
+};
+
+function calculateScore(bucket, position, bucketSize) {
+  const range = scoreRanges[bucket];
+
+  if (!range) {
+    return null;
+  }
+
+  if (bucketSize <= 1) {
+    return range.max;
+  }
+
+  const positionFromTop = position - 1;
+  const scoreStep = (range.max - range.min) / (bucketSize - 1);
+  const score = range.max - positionFromTop * scoreStep;
+
+  return Number(score.toFixed(1));
+}
 
 app.use(express.json());
 
@@ -68,6 +91,12 @@ app.get('/api/lists/:listId/movies', async (req, res) => {
       movies: movies
         .filter((movie) => movie.bucket === bucket)
         .sort((firstMovie, secondMovie) => firstMovie.position - secondMovie.position),
+    })).map((bucketGroup) => ({
+      ...bucketGroup,
+      movies: bucketGroup.movies.map((movie) => ({
+        ...movie,
+        score: calculateScore(bucketGroup.bucket, movie.position, bucketGroup.movies.length),
+      })),
     }));
 
     res.json({ listId, buckets });
