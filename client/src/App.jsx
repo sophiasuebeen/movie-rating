@@ -83,7 +83,13 @@ const secondaryButtonStyle = {
 
 function getListId() {
   const params = new URLSearchParams(window.location.search);
-  return params.get('listId') || window.localStorage.getItem('movieListId') || '';
+  const listId = params.get('listId') || window.localStorage.getItem('movieListId') || '';
+
+  if (listId === 'undefined' || listId === 'null') {
+    return '';
+  }
+
+  return listId.trim();
 }
 
 function getBucketLabel(bucketValue) {
@@ -488,6 +494,9 @@ function RankingPage() {
   const [buckets, setBuckets] = useState(fallbackBuckets);
   const [status, setStatus] = useState(listId ? 'loading' : 'missing-list');
   const [error, setError] = useState('');
+  const [shareLink, setShareLink] = useState('');
+  const [shareError, setShareError] = useState('');
+  const [isSharing, setIsSharing] = useState(false);
 
   useEffect(() => {
     if (!listId) {
@@ -509,6 +518,32 @@ function RankingPage() {
     loadMovies();
   }, [listId]);
 
+  async function handleShare() {
+    if (!listId) {
+      setShareError('Create or load a list before sharing.');
+      return;
+    }
+
+    setShareError('');
+    setIsSharing(true);
+
+    try {
+      const data = await apiRequest(`/api/lists/${listId}/share`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      });
+      setShareLink(`${window.location.origin}/public/${data.shareSlug}`);
+    } catch (shareRequestError) {
+      if (shareRequestError.message.includes('404')) {
+        setShareError('Share route or list was not found. Restart the backend and make sure this ranking list still exists.');
+      } else {
+        setShareError(shareRequestError.message);
+      }
+    } finally {
+      setIsSharing(false);
+    }
+  }
+
   return (
     <main style={pageStyle}>
       <header style={{ maxWidth: 880, margin: '0 auto 32px' }}>
@@ -521,9 +556,41 @@ function RankingPage() {
         <p style={{ color: colors.slate, fontSize: 18, lineHeight: 1.55, margin: 0, maxWidth: 680 }}>
           Movies are grouped by bucket and ordered by their position inside that bucket.
         </p>
+        {listId && status === 'ready' && (
+          <div style={{ display: 'grid', gap: 12, marginTop: 24, maxWidth: 680 }}>
+            <button
+              disabled={isSharing}
+              onClick={handleShare}
+              style={{ ...primaryButtonStyle, opacity: isSharing ? 0.65 : 1, width: 'fit-content' }}
+              type="button"
+            >
+              {isSharing ? 'Creating link...' : 'Share ranking'}
+            </button>
+            {shareLink && (
+              <p style={{ background: colors.surfaceSoft, borderRadius: 20, color: colors.slate, margin: 0, padding: 16 }}>
+                Public link:{' '}
+                <a href={shareLink} style={{ color: colors.inkDeep, fontWeight: 700 }}>
+                  {shareLink}
+                </a>
+              </p>
+            )}
+            {shareError && (
+              <p style={{ border: `1px solid ${colors.critical}`, borderRadius: 20, color: colors.critical, margin: 0, padding: 16 }}>
+                {shareError}
+              </p>
+            )}
+          </div>
+        )}
       </header>
 
-      <section style={{ display: 'grid', gap: 18, margin: '0 auto', maxWidth: 880 }}>
+      <RankingBuckets buckets={buckets} status={status} error={error} />
+    </main>
+  );
+}
+
+function RankingBuckets({ buckets, status, error }) {
+  return (
+    <section style={{ display: 'grid', gap: 18, margin: '0 auto', maxWidth: 880 }}>
         {status === 'missing-list' && (
           <p style={{ background: colors.surfaceSoft, borderRadius: 24, color: colors.slate, margin: 0, padding: 24 }}>
             Add a list id to the URL to load rankings, for example: /ranking?listId=YOUR_LIST_ID
@@ -601,11 +668,60 @@ function RankingPage() {
             </article>
           ))}
       </section>
+  );
+}
+
+function PublicRankingPage() {
+  const shareSlug = window.location.pathname.split('/').filter(Boolean)[1] || '';
+  const [listName, setListName] = useState('Shared movie ranking');
+  const [buckets, setBuckets] = useState(fallbackBuckets);
+  const [status, setStatus] = useState(shareSlug ? 'loading' : 'error');
+  const [error, setError] = useState(shareSlug ? '' : 'Shared ranking not found.');
+
+  useEffect(() => {
+    if (!shareSlug) {
+      return;
+    }
+
+    async function loadPublicRanking() {
+      try {
+        const data = await apiRequest(`/api/public/${shareSlug}`);
+        setListName(data.list.name);
+        setBuckets(data.buckets);
+        setStatus('ready');
+      } catch (loadError) {
+        setError(loadError.message);
+        setStatus('error');
+      }
+    }
+
+    loadPublicRanking();
+  }, [shareSlug]);
+
+  return (
+    <main style={pageStyle}>
+      <header style={{ maxWidth: 880, margin: '0 auto 32px' }}>
+        <p style={{ color: colors.cobalt, fontSize: 14, fontWeight: 700, margin: '0 0 12px' }}>
+          Shared ranking
+        </p>
+        <h1 style={{ fontSize: 'clamp(36px, 7vw, 56px)', lineHeight: 1.1, margin: '0 0 12px' }}>
+          {listName}
+        </h1>
+        <p style={{ color: colors.slate, fontSize: 18, lineHeight: 1.55, margin: 0, maxWidth: 680 }}>
+          This is a read-only movie ranking grouped by bucket with approximate 1-10 scores.
+        </p>
+      </header>
+
+      <RankingBuckets buckets={buckets} status={status} error={error} />
     </main>
   );
 }
 
 export default function App() {
+  if (window.location.pathname.startsWith('/public/')) {
+    return <PublicRankingPage />;
+  }
+
   if (window.location.pathname === '/add-movie') {
     return <AddMoviePage />;
   }

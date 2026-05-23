@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const express = require('express');
 const { PrismaClient } = require('@prisma/client');
 
@@ -32,6 +33,26 @@ function calculateScore(bucket, position, bucketSize) {
   const score = range.max - positionFromTop * scoreStep;
 
   return Number(score.toFixed(1));
+}
+
+function buildBucketGroups(movies) {
+  return bucketOrder.map(({ bucket, label }) => ({
+    bucket,
+    label,
+    movies: movies
+      .filter((movie) => movie.bucket === bucket)
+      .sort((firstMovie, secondMovie) => firstMovie.position - secondMovie.position),
+  })).map((bucketGroup) => ({
+    ...bucketGroup,
+    movies: bucketGroup.movies.map((movie) => ({
+      ...movie,
+      score: calculateScore(bucketGroup.bucket, movie.position, bucketGroup.movies.length),
+    })),
+  }));
+}
+
+function createShareSlug() {
+  return crypto.randomBytes(6).toString('base64url');
 }
 
 app.use(express.json());
@@ -91,24 +112,92 @@ app.get('/api/lists/:listId/movies', async (req, res) => {
       orderBy: { position: 'asc' },
     });
 
-    const buckets = bucketOrder.map(({ bucket, label }) => ({
-      bucket,
-      label,
-      movies: movies
-        .filter((movie) => movie.bucket === bucket)
-        .sort((firstMovie, secondMovie) => firstMovie.position - secondMovie.position),
-    })).map((bucketGroup) => ({
-      ...bucketGroup,
-      movies: bucketGroup.movies.map((movie) => ({
-        ...movie,
-        score: calculateScore(bucketGroup.bucket, movie.position, bucketGroup.movies.length),
-      })),
-    }));
+    const buckets = buildBucketGroups(movies);
 
     res.json({ listId, buckets });
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to load movies.' });
+  }
+});
+
+app.post('/api/lists/:listId/share', async (req, res) => {
+  const { listId } = req.params;
+
+  try {
+    const list = await prisma.movieList.findUnique({
+      where: { id: listId },
+      select: { id: true, shareSlug: true },
+    });
+
+    if (!list) {
+      return res.status(404).json({ error: 'List not found.' });
+    }
+
+    if (list.shareSlug) {
+      return res.json({ shareSlug: list.shareSlug });
+    }
+
+    let updatedList = null;
+
+    for (let attempts = 0; attempts < 5; attempts += 1) {
+      try {
+        updatedList = await prisma.movieList.update({
+          where: { id: listId },
+          data: { shareSlug: createShareSlug() },
+          select: { shareSlug: true },
+        });
+        break;
+      } catch (error) {
+        if (error.code !== 'P2002') {
+          throw error;
+        }
+      }
+    }
+
+    if (!updatedList) {
+      return res.status(500).json({ error: 'Failed to create share link.' });
+    }
+
+    res.status(201).json({ shareSlug: updatedList.shareSlug });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to create share link.' });
+  }
+});
+
+app.get('/api/public/:shareSlug', async (req, res) => {
+  const { shareSlug } = req.params;
+
+  try {
+    const list = await prisma.movieList.findUnique({
+      where: { shareSlug },
+      select: {
+        id: true,
+        name: true,
+        updatedAt: true,
+      },
+    });
+
+    if (!list) {
+      return res.status(404).json({ error: 'Shared ranking not found.' });
+    }
+
+    const movies = await prisma.movie.findMany({
+      where: { listId: list.id, status: 'ranked' },
+      orderBy: { position: 'asc' },
+    });
+
+    res.json({
+      list: {
+        name: list.name || 'Movie Ranking',
+        updatedAt: list.updatedAt,
+      },
+      buckets: buildBucketGroups(movies),
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ error: 'Failed to load shared ranking.' });
   }
 });
 
@@ -281,6 +370,10 @@ app.post('/api/lists/:listId/movies/:movieId/compare', async (req, res) => {
     console.error(error);
     res.status(500).json({ error: 'Failed to save comparison.' });
   }
+});
+
+app.use('/api', (req, res) => {
+  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
 });
 
 app.listen(port, () => {
