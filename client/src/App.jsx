@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 
 const apiBaseUrl = 'http://localhost:4000';
+const requestTimeoutMs = 10000;
 
 const colors = {
   canvas: '#ffffff',
@@ -89,17 +90,40 @@ function getBucketLabel(bucketValue) {
   return bucketOptions.find((option) => option.bucket === bucketValue)?.label || bucketValue;
 }
 
+async function apiRequest(path, options = {}) {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), requestTimeoutMs);
+
+  try {
+    const response = await fetch(`${apiBaseUrl}${path}`, {
+      ...options,
+      signal: controller.signal,
+    });
+    const contentType = response.headers.get('content-type') || '';
+    const data = contentType.includes('application/json') ? await response.json() : {};
+
+    if (!response.ok) {
+      throw new Error(data.error || `Request failed with status ${response.status}.`);
+    }
+
+    return data;
+  } catch (requestError) {
+    if (requestError.name === 'AbortError') {
+      throw new Error('The backend request timed out. Make sure the server is running on http://localhost:4000.');
+    }
+
+    throw requestError;
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
 async function createList() {
-  const response = await fetch(`${apiBaseUrl}/api/lists`, {
+  const data = await apiRequest('/api/lists', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ name: 'My Movie Ranking' }),
   });
-  const data = await response.json();
-
-  if (!response.ok) {
-    throw new Error(data.error || 'Failed to create list.');
-  }
 
   window.localStorage.setItem('movieListId', data.id);
   return data.id;
@@ -267,16 +291,11 @@ function AddMoviePage() {
 
     try {
       const activeListId = await ensureListId();
-      const response = await fetch(`${apiBaseUrl}/api/lists/${activeListId}/movies`, {
+      const data = await apiRequest(`/api/lists/${activeListId}/movies`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, bucket }),
       });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to add movie.');
-      }
 
       setTitle('');
 
@@ -302,7 +321,7 @@ function AddMoviePage() {
     setIsSaving(true);
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/lists/${listId}/movies/${pendingMovie.id}/compare`, {
+      const data = await apiRequest(`/api/lists/${listId}/movies/${pendingMovie.id}/compare`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -310,11 +329,6 @@ function AddMoviePage() {
           winnerMovieId,
         }),
       });
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(data.error || 'Failed to save comparison.');
-      }
 
       if (data.complete) {
         setPendingMovie(null);
@@ -482,12 +496,7 @@ function RankingPage() {
 
     async function loadMovies() {
       try {
-        const response = await fetch(`${apiBaseUrl}/api/lists/${listId}/movies`);
-        const data = await response.json();
-
-        if (!response.ok) {
-          throw new Error(data.error || 'Failed to load ranking.');
-        }
+        const data = await apiRequest(`/api/lists/${listId}/movies`);
 
         setBuckets(data.buckets);
         setStatus('ready');
