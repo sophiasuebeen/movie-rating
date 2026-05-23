@@ -5,3 +5,4 @@ dist
 client/dist
 .DS_Store
 .env
+server/prisma/dev.db

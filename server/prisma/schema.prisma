@@ -23,6 +23,7 @@ model Movie {
   createdAt       DateTime     @default(now())
   bucket          String
   position        Int
+  status          String       @default("ranked")
   list            MovieList    @relation(fields: [listId], references: [id])
   listId          String
   wonComparisons  Comparison[] @relation("winner")
