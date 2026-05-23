@@ -2,35 +2,25 @@
 
 ## 1. Project Overview
 
-This project is a beginner-friendly full-stack prototype for a personal movie ranking website. The idea is similar to Beli, but focused on movies instead of restaurants. Users build a list of movies they have watched, then compare two movies at a time by answering one simple question: "Which movie did you like better?"
+This project is a beginner-friendly full-stack movie ranking website. The core idea is to let users add the movies they watched and insert each new movie into an existing ranked list through sequential pairwise comparisons.
 
-Instead of asking users to directly assign a numeric rating, the app learns their preferences from many small pairwise choices. Over time, those comparison results create a ranked movie list. The app can then convert that ranking into an approximate 1-10 score for each movie.
+Rather than treating "add movie" and "compare movies" as separate features, the MVP should make comparison part of the add flow. When a new movie is added, the app should immediately compare it against the ranked list until it can find the correct position.
 
-The main user problem this solves is that numeric movie ratings can feel difficult and inconsistent. A user might not know whether a movie is a 7.5 or an 8.0, and their rating standards may change over time. But choosing between two movies is usually easier: "I liked Movie A better than Movie B."
+The app avoids asking for direct numeric ratings. Instead, it asks a simple question about the new movie compared to one ranked movie at a time. This builds an ordered list and then converts the final position into an approximate 1–10 score.
 
-Pairwise comparison is useful for this app because:
-
-- It is easier and more natural than assigning exact numbers.
-- It produces rankings based on relative preference.
-- It avoids users overthinking small rating differences.
-- It can become more accurate as the user adds more comparisons.
-- It creates an interactive experience instead of a static rating form.
-
-The first version should focus on proving the core loop: add movies, compare movies, see rankings, and share a public ranking page.
+The first version should prove the core loop: add a movie, insert it into the ranking via comparisons, see the ranked list, and optionally share the result.
 
 ## 2. MVP Scope
 
-The MVP should include only the features needed to make the core product work.
+The MVP should include only the features needed to make the ranked insertion flow work.
 
 Included in the first prototype:
 
 - A simple home page explaining the app.
-- A way to add movies to a personal list.
-- A page that shows two movies and lets the user choose which one they liked better.
-- Storage for movies and pairwise comparison results.
-- A simple ranking calculation based on wins and losses.
+- A single Add Movie page where users add a new movie and, if needed, compare it against ranked movies.
+- Storage for movies, a ranked order, and comparison results.
 - A ranking page that shows the user's movies in ranked order.
-- An approximate 1-10 score shown next to each ranked movie.
+- An approximate 1–10 score shown next to each ranked movie.
 - Basic styling that is clean and readable.
 
 Optional MVP stretch (build only after the core loop works):
@@ -49,6 +39,7 @@ Intentionally excluded from the first prototype:
 - Complex privacy controls.
 - Admin tools.
 - Email notifications.
+- A separate random pairwise compare page.
 
 The MVP should feel like a working prototype, not a complete social product.
 
@@ -86,33 +77,32 @@ For this plan, the suggested structure will assume React + Express + SQLite + Pr
 
 ## 4. Core User Flow
 
-Add movies:
+Add and insert a movie:
 
 1. User opens the app.
-2. User goes to the Add Movie page.
-3. User enters a movie title.
-4. App saves the movie to the user's personal list.
-5. User can repeat this until they have enough movies to compare.
+2. User enters a new movie title on the Add Movie page.
+3. If this is the first movie, it becomes ranked position 1 immediately.
+4. If there are existing ranked movies, the app immediately compares the new movie with the movie at rank 1.
+5. If the new movie wins, it is placed above the current movie at that position.
+6. If the new movie loses, the app compares it with the next movie in the ranked list.
+7. The app continues until the new movie finds the correct insertion point or reaches the end.
+8. The movie is inserted into the ranked list.
+9. The app converts the final rank into an approximate 1–10 score.
+10. The user can view the updated ranked list and optionally share it.
 
-Compare two movies:
-
-1. User opens the Compare page.
-2. App selects two movies from the user's list.
-3. User answers: "Which movie did you like better?"
-4. App saves the comparison result.
-5. App shows another pair to compare.
+Important: this is not a random pairwise comparison app. The compare flow is only used to insert each new movie into the existing ranking.
 
 View personal ranking:
 
 1. User opens the Ranking page.
-2. App calculates wins, losses, and ranking score for each movie.
-3. App sorts movies from highest score to lowest score.
-4. App displays each movie's rank and approximate 1-10 rating.
+2. App loads movies in ranked order.
+3. App displays each movie's position and approximate 1–10 rating.
+4. Optionally, the user can generate a share link.
 
 Share ranking page:
 
 1. User clicks a Share button on the Ranking page.
-2. App creates or uses an existing public share ID.
+2. App creates or returns an existing public share ID.
 3. App displays a public link.
 4. Friends can open the link and view the ranking page.
 5. Friends cannot edit the ranking from the public page.
@@ -123,7 +113,7 @@ Keep the MVP schema small and easy to understand.
 
 ### Movie
 
-Stores movies added by the user.
+Stores movies added by the user and their ordered position.
 
 Fields:
 
@@ -131,6 +121,7 @@ Fields:
 - title: movie title
 - createdAt: date the movie was added
 - listId: ID of the movie list this movie belongs to
+- position: integer ranking position within the list
 
 ### MovieList
 
@@ -146,7 +137,7 @@ Fields:
 
 ### Comparison
 
-Stores each pairwise comparison result.
+Stores each pairwise comparison result used during insertion.
 
 Fields:
 
@@ -156,25 +147,11 @@ Fields:
 - loserMovieId: ID of the movie the user liked less
 - createdAt: date the comparison happened
 
-### Ranking
-
-For the MVP, rankings can be calculated dynamically instead of stored permanently. A separate Ranking table is optional.
-
-If storing rankings later, possible fields:
-
-- id: unique ranking row ID
-- movieId: related movie ID
-- listId: related movie list ID
-- wins: number of comparison wins
-- losses: number of comparison losses
-- score: wins minus losses
-- approximateRating: generated 1-10 score
-- updatedAt: date the ranking was calculated
-
 MVP recommendation:
 
-- Do not create a Ranking table at first.
-- Calculate rankings from the Comparison table whenever the Ranking page loads.
+- Do not create a separate Ranking table at first.
+- Keep `position` on the Movie model so the ranked order is easy to maintain.
+- Use the Comparison table to store insertion decisions and support future ranking improvements.
 
 ## 6. Page-by-Page UI Plan
 
@@ -188,45 +165,26 @@ Purpose:
 Main elements:
 
 - App name.
-- Short description: rank movies by choosing between pairs.
-- Button to start or open the user's movie list.
-- Link to the Ranking page if movies already exist.
+- Short description: add a movie and insert it into a ranked list by comparing it against existing movies.
+- Button to start adding a movie.
+- Link to the Ranking page.
 
 ### Add Movie Page
 
 Purpose:
 
-- Let the user add movies to their personal list.
+- Let the user add a new movie and insert it into the ranked list.
 
 Main elements:
 
 - Text input for movie title.
 - Add Movie button.
-- List of movies already added.
-- Delete button can be optional for MVP, but helpful.
-- Link or button to start comparing once at least two movies exist.
-
-### Compare Movies Page
-
-Purpose:
-
-- Let the user make pairwise choices.
-
-Main elements:
-
-- Prompt: "Which movie did you like better?"
-- Two movie cards or buttons.
-- Each movie title displayed clearly.
-- User clicks one movie to save it as the winner.
-- After choosing, show the next pair.
-- Message if fewer than two movies exist.
-
-MVP pair selection can be simple:
-
-- Pick two random movies from the list.
-- Avoid selecting the same movie twice.
-
-Later, the app can choose smarter comparisons based on uncertainty.
+- If this is the first movie, confirm it was ranked position 1.
+- If there are existing movies, show the current comparison candidate.
+- Comparison prompt: "Which movie did you like better?"
+- Two movie cards or buttons: the new movie and the current ranked movie candidate.
+- After choosing, show the next comparison or finish insertion.
+- Show the current ranked list so the user understands the order.
 
 ### Ranking Page
 
@@ -238,9 +196,8 @@ Main elements:
 
 - Ranked list from best to lowest.
 - Movie title.
-- Wins and losses.
-- Simple score, such as wins minus losses.
-- Approximate 1-10 rating.
+- Current ranking position.
+- Approximate 1–10 score.
 - Share button.
 - Public share link after generated.
 
@@ -254,7 +211,7 @@ Main elements:
 
 - Public list title.
 - Ranked movies.
-- Approximate 1-10 ratings.
+- Approximate 1–10 ratings.
 - Optional timestamp showing when the ranking was last updated.
 
 Important MVP rule:
@@ -282,36 +239,33 @@ POST /api/lists
 
 GET /api/lists/:listId/movies
 
-- Gets all movies in a list.
+- Gets all movies in a list in ranked order.
 
 POST /api/lists/:listId/movies
 
-- Adds a movie to a list.
+- Adds a new movie to a list.
 - Request body includes the movie title.
+- If there are existing movies, the response can include the first comparison candidate.
 
 DELETE /api/lists/:listId/movies/:movieId
 
 - Deletes a movie from a list.
 - Optional for MVP, but useful.
 
-### Comparison Routes
+### Insertion Comparison Routes
 
-GET /api/lists/:listId/compare
+POST /api/lists/:listId/movies/:movieId/compare
 
-- Returns two movies for the user to compare.
-- MVP can return two random movies.
-
-POST /api/lists/:listId/comparisons
-
-- Saves a comparison result.
-- Request body includes winnerMovieId and loserMovieId.
+- Saves a comparison result for a newly added movie.
+- Request body includes the existing candidate movie and the winner.
+- Returns the next candidate or the final insertion position.
 
 ### Ranking Routes
 
 GET /api/lists/:listId/rankings
 
-- Calculates and returns ranked movies.
-- Includes wins, losses, score, rank position, and approximate 1-10 rating.
+- Returns movies in ranked order.
+- Includes position and approximate 1–10 rating.
 
 ### Share Routes
 
@@ -328,62 +282,45 @@ GET /api/public/:shareSlug
 
 Start with the simplest possible ranking algorithm.
 
-For each movie:
+For the MVP, keep a ranked list of movies and insert each new movie into that list using a linear compare flow.
 
-- wins = number of comparisons where this movie was selected as the winner
-- losses = number of comparisons where this movie was selected as the loser
-- score = wins - losses
+Insertion algorithm:
 
-Ranking:
+1. Keep movies sorted by `position`.
+2. When a new movie is added and there are existing movies, start by comparing it with the movie at position 1.
+3. If the new movie wins, insert it above the current movie and shift later movies down.
+4. If the new movie loses, compare it with the next movie in the list.
+5. Continue until the correct position is found or the end of the list is reached.
+6. If the new movie loses to every existing candidate, place it at the bottom.
+7. Update `position` values for affected movies.
 
-1. Sort movies by score from highest to lowest.
-2. If two movies have the same score, sort by more wins.
-3. If still tied, sort alphabetically or by creation date.
-
-Example:
-
-- Movie A: 5 wins, 1 loss, score 4
-- Movie B: 3 wins, 2 losses, score 1
-- Movie C: 1 win, 4 losses, score -3
+This linear insertion approach is the simplest way to build the core flow. Later, it can be improved with binary insertion, Elo, or more advanced pairwise ranking.
 
 Approximate 1-10 rating:
 
-For MVP, convert ranking position into a rating instead of trying to calculate a perfect statistical score.
-
-Simple formula:
-
 - If there is only one movie, rating = 10.
-- Otherwise:
-  - rating = 10 - ((rankPosition - 1) / (totalMovies - 1)) * 9
-
-This means:
-
-- Rank 1 gets about 10.
-- Last place gets about 1.
-- Movies in between are spread across the range.
-
-Round the rating to one decimal place.
+- Otherwise, convert the position into a score between 10 and 1.
+- Use a linear mapping from rank position to the 1–10 range.
 
 Example with 5 movies:
 
-- Rank 1: 10.0
-- Rank 2: 7.8
-- Rank 3: 5.5
-- Rank 4: 3.3
-- Rank 5: 1.0
+- Position 1: 10.0
+- Position 2: 7.8
+- Position 3: 5.5
+- Position 4: 3.3
+- Position 5: 1.0
 
 Important limitation:
 
 - This is not a perfect rating system.
 - It is simple and understandable, which is good for the MVP.
-- It may be less accurate when the user has made only a few comparisons.
+- It may not perfectly reflect every comparison history, but it gives a clear ranked order.
 
 Future upgrade:
 
-- Replace wins/losses with Elo ratings.
-- Each movie starts with the same rating, such as 1500.
-- When one movie beats another, update both ratings.
-- Elo would better account for strength of opponents and repeated comparisons.
+- Replace linear insertion with binary insertion to compare fewer movies.
+- Build a more statistical ranking model such as Elo.
+- Use comparison history to refine placement confidence.
 
 ## 9. Folder Structure
 
@@ -407,7 +344,6 @@ movie-rating/
       pages/
         HomePage.jsx
         AddMoviePage.jsx
-        ComparePage.jsx
         RankingPage.jsx
         PublicRankingPage.jsx
       components/
@@ -466,40 +402,38 @@ Each step should be small enough to ask Codex to implement one at a time.
 
 4. Build the minimal list/movie API.
    - Add route to create a movie list.
-   - Add route to fetch movies for a list.
-   - Add route to add a movie to a list.
+   - Add route to fetch movies in ranked order.
+   - Add route to add a movie and begin insertion.
    - Optionally add route to delete a movie later.
 
 5. Build the basic React app shell.
    - Add frontend routing.
-   - Create Home, Add Movie, Compare, and Ranking pages.
+   - Create Home, Add Movie, Ranking, and Public Ranking pages.
    - Add simple navigation.
 
 6. Connect Add Movie page to the backend.
    - Create or load a list ID in the browser.
    - Add movies through the API.
-   - Display saved movies.
+   - Display saved movies and current ranked list.
 
-7. Build the comparison API.
-   - Add route to get two random movies.
-   - Add route to save comparison results.
+7. Build insertion comparison support.
+   - Add route to record a comparison result for a new movie.
+   - Return the next candidate or final insertion outcome.
    - Validate that winner and loser are different movies.
 
-8. Build the Compare page.
-   - Fetch two movies.
+8. Build the add-movie insertion flow.
+   - Show the new movie and the current ranked candidate.
    - Let the user select the preferred movie.
-   - Save the comparison.
-   - Load the next pair.
+   - Continue comparing until insertion is finished.
 
 9. Build the ranking service.
-   - Count wins and losses.
-   - Calculate score as wins minus losses.
-   - Sort movies into ranked order.
-   - Convert rank position into a 1-10 rating.
+   - Use the ranked `position` values to order movies.
+   - Convert positions into approximate 1–10 scores.
+   - Return the ranked list to the frontend.
 
 10. Build the Ranking page.
     - Fetch ranking data from the backend.
-    - Display rank, title, wins, losses, score, and approximate rating.
+    - Display rank, title, position, and approximate rating.
 
 11. Add public share support (optional MVP stretch).
     - Generate a share slug for each list.
@@ -508,8 +442,8 @@ Each step should be small enough to ask Codex to implement one at a time.
 
 12. Add basic empty states and error states.
     - No movies yet.
-    - Need at least two movies to compare.
-    - No comparisons yet.
+    - First movie added.
+    - Comparison candidate not found.
     - Public link not found.
 
 13. Polish the MVP UI lightly.
@@ -519,14 +453,13 @@ Each step should be small enough to ask Codex to implement one at a time.
 
 14. Test the full user flow manually.
     - Create a list.
-    - Add at least five movies.
-    - Make several comparisons.
-    - View rankings.
+    - Add movies and insert them into the ranking.
+    - View the ranked list.
     - Verify share flow only after the core loop works.
 
 ## 11. Risks and Things to Avoid
 
-The main risk is making the MVP too complicated before the core loop works.
+The main risk is making the MVP too complicated before the core insertion flow works.
 
 Avoid building these first:
 
@@ -542,19 +475,27 @@ Avoid building these first:
 - Complex mobile design.
 - Multiple list types.
 - Advanced privacy settings.
+- A separate random compare page.
 
 Things that could make the MVP harder than necessary:
 
-- Trying to make rankings statistically perfect too early.
-- Adding movie metadata before users can add and compare movies.
-- Building a social network before the personal ranking flow works.
-- Designing too many pages before the main API exists.
+- Treating add-movie and compare-movie as independent features.
+- Choosing random movie pairs instead of comparing the new movie against ranked candidates.
+- Trying to make the ranking statistically perfect too early.
 - Overengineering the database schema.
 - Adding authentication before proving the product interaction is fun.
 
+Existing assumptions to remove:
+
+- The app needs a separate Compare page for random pairs.
+- Ranking should start from wins and losses.
+- Pairwise comparisons must operate over the whole list before insertion.
+- Comparison history is the only source of ranking.
+- The `Ranking` table is required for MVP.
+
 The MVP should answer one question:
 
-"Is it useful and enjoyable to rank movies by comparing them two at a time?"
+"Is it useful and enjoyable to rank movies by inserting each new movie into an ordered list through simple comparisons?"
 
 ## 12. Future Feature Roadmap
 

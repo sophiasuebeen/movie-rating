@@ -1,6 +1,6 @@
 # TODO
 
-This project is a beginner-friendly full-stack movie ranking website. Users compare two movies and choose which one they liked better. The app stores pairwise comparisons, creates a ranking, converts it into an approximate 1–10 score, and allows sharing the ranking page with friends.
+This project is a beginner-friendly full-stack movie ranking website. Users add a movie they watched and insert it into an existing ranked list by comparing it against ranked candidates. The app stores comparison results, maintains the ranked order, converts positions into an approximate 1–10 score, and allows sharing the ranking page with friends.
 
 ## 1. Project setup
 
@@ -14,90 +14,90 @@ Suggested git commit message: `chore: initialize project structure for movie ran
 
 ## 2. Basic homepage
 
-Task: Build a simple home page that explains the app and points users to the core flow.
-Goal: Give users a clear starting point and describe the main interaction.
+Task: Build a simple home page that explains the app and points users to the add-and-insert flow.
+Goal: Give users a clear starting point and explain the core interaction.
 Concern / risk: Spending too much time polishing the landing page before the app works.
-Decision: Keep the home page minimal with a short description, start button, and links to core pages.
-Reason: A basic homepage is useful, but the MVP must prioritize core functionality first.
-Definition of Done: The home page renders with app name, description, and navigation to add movies, compare, and ranking pages.
+Decision: Keep the home page minimal with a short explanation and links to add movies and view rankings.
+Reason: A basic homepage is useful, but the MVP must prioritize the insertion flow first.
+Definition of Done: The home page renders with app name, description, and navigation to Add Movie and Ranking pages.
 Suggested git commit message: `feat: add basic homepage for movie ranking app`
 
 ## 3. Movie model / database
 
-Task: Define the database schema and build the backend data layer for movies and comparisons.
+Task: Define the database schema and build the backend data layer for movies, ranking position, and comparisons.
 Goal: Establish the MVP data model using `MovieList`, `Movie`, and `Comparison`.
 Concern / risk: Overengineering the schema or adding tables like `Ranking` too early.
-Decision: Keep the schema small and compute rankings dynamically from comparisons.
-Reason: Storing only the essential entities keeps the database simple and easy to debug.
-Definition of Done: Prisma schema contains `MovieList`, `Movie`, and `Comparison`; migration is applied and the SQLite database is created.
-Suggested git commit message: `feat: add Prisma schema for movie lists, movies, and comparisons`
+Decision: Keep the schema small and include `position` on `Movie` so ranked order is easy to maintain.
+Reason: A ranked position field makes linear insertion straightforward and keeps the schema beginner-friendly.
+Definition of Done: Prisma schema contains `MovieList`, `Movie` with `position`, and `Comparison`; migration is applied and the SQLite database is created.
+Suggested git commit message: `feat: add Prisma schema for ranked movies and comparisons`
 
-## 4. Add movie form
+## 4. Add movie flow
 
-Task: Build the UI and API connection to add movies to a list.
-Goal: Let users enter movie titles and save them.
-Concern / risk: Building account or list management before the basic add flow is stable.
-Decision: Use a single list per browser session and store the `listId` locally, not auth.
-Reason: This avoids unnecessary authentication complexity while preserving a personal list.
-Definition of Done: The Add Movie page can create/load a list, submit movie titles, and display the saved movie list.
-Suggested git commit message: `feat: implement add movie form and save movies`
+Task: Build the UI and API connection for adding a new movie and inserting it into the rank.
+Goal: Let users add a movie and immediately compare it against the existing ranked list if needed.
+Concern / risk: Treating add and compare as separate features or building a standalone compare page.
+Decision: Keep comparison as part of the add-movie flow and show the new movie against ranked candidates.
+Reason: This matches the intended product flow and avoids unnecessary feature separation.
+Definition of Done: The Add Movie page can create/load a list, submit a new movie, and begin the insertion comparison flow when existing movies exist.
+Suggested git commit message: `feat: implement add movie insertion flow`
 
-## 5. Movie list page
+## 5. Ranking page
 
-Task: Display the saved movies in the user's list.
-Goal: Confirm movies are stored correctly and visible to the user.
-Concern / risk: Adding delete/edit controls too early when the core flow is still incomplete.
-Decision: Show a read-only list first, with delete as optional later.
-Reason: A simple movie list page validates backend persistence without extra UI complexity.
-Definition of Done: The movie list page loads movies from the backend and renders them clearly.
-Suggested git commit message: `feat: add movie list display page`
+Task: Display the current ranked list and approximate scores.
+Goal: Confirm movies are ordered correctly and score conversion is visible.
+Concern / risk: Building too many movie management controls before the ranking view is stable.
+Decision: Focus on read-only ranked display first, with optional share support later.
+Reason: A simple ranking page validates that insertion ordering works and keeps the UI scope small.
+Definition of Done: The Ranking page loads the ordered list and shows titles, positions, and 1–10 scores.
+Suggested git commit message: `feat: add ranking page for ordered movies`
 
-## 6. Pairwise comparison page
+## 6. Insertion comparison backend
 
-Task: Build the page that shows two movie choices and records the user's preference.
-Goal: Implement the core interaction of comparing two movies.
-Concern / risk: Trying to select optimal pairs or use a complex ranking strategy too early.
-Decision: Start with two random movies from the list, ensuring they are distinct.
-Reason: Random pairwise comparisons are easy to implement and enough to prove the interaction.
-Definition of Done: The Compare page fetches two movies and displays two selectable choices.
-Suggested git commit message: `feat: add basic compare page with two movie choices`
+Task: Add the backend route that records a comparison for a new movie and returns the next candidate.
+Goal: Persist each insertion decision and support the sequential compare flow.
+Concern / risk: Accepting invalid comparisons or misplacing the new movie in the rank.
+Decision: Validate that the new movie and the current candidate differ and belong to the same list.
+Reason: Simple validation prevents bad data and keeps the insertion algorithm consistent.
+Definition of Done: The backend stores insertion comparison results and returns the next ranked movie candidate or the final position.
+Suggested git commit message: `feat: add insertion comparison backend route`
 
-## 7. Store comparison results
+## 7. Store comparison results and update ranking
 
-Task: Add the backend route and frontend call to save winner/loser selections.
-Goal: Persist pairwise comparison results so ranking can be calculated.
-Concern / risk: Accepting invalid comparisons or duplicate pairs without validation.
-Decision: Validate that winner and loser IDs differ and belong to the same list.
-Reason: Simple validation prevents bad data while keeping the API straightforward.
-Definition of Done: When a user selects a winner, the app stores a valid comparison record in the database.
-Suggested git commit message: `feat: store pairwise comparison results`
+Task: Persist new movie comparisons and insert the movie into the ranked order.
+Goal: Keep the ranked list accurate after each insertion comparison.
+Concern / risk: Failing to update positions consistently or leaving the list unsorted.
+Decision: Update `position` values for affected movies during insertion.
+Reason: Maintaining explicit positions simplifies the ranking display and future comparisons.
+Definition of Done: A new movie is inserted into the correct ranked position and affected movies are shifted as needed.
+Suggested git commit message: `feat: persist comparisons and update ranked positions`
 
-## 8. Ranking algorithm using wins/losses
+## 8. Ranking algorithm using linear insertion
 
-Task: Calculate movie rankings from comparisons using wins and losses.
-Goal: Rank movies simply and reliably for MVP.
-Concern / risk: Overcomplicating ranking with Elo or TrueSkill before the app is functional.
-Decision: Use wins minus losses to compute a score and sort movies by that score.
-Reason: This algorithm is easy to reason about and enough for the initial product.
-Definition of Done: Backend ranking service returns movies sorted by score with wins/losses counts.
-Suggested git commit message: `feat: add wins/losses ranking algorithm`
+Task: Implement the simplest insertion-based ranking algorithm.
+Goal: Rank new movies by comparing them against ranked candidates one by one.
+Concern / risk: Overcomplicating the ranking algorithm before the app is functional.
+Decision: Use a linear insertion process starting with the top-ranked movie.
+Reason: This is the simplest way to build the intended product flow and makes comparisons easy to explain.
+Definition of Done: The app inserts new movies by comparing them sequentially until the correct rank is found.
+Suggested git commit message: `feat: add linear insertion ranking algorithm`
 
 ## 9. Convert ranking into 1–10 scores
 
-Task: Add approximate score conversion from rank position to a 1–10 range.
-Goal: Give users a familiar numeric rating alongside the ranked list.
+Task: Add approximate score conversion from ranked position to a 1–10 range.
+Goal: Give users a familiar score alongside the ordered list.
 Concern / risk: Trying to calculate statistical ratings too precisely for MVP.
-Decision: Use a linear conversion from rank position to a 1–10 scale.
-Reason: It is simple, predictable, and matches the MVP focus on relative preference.
+Decision: Use a linear mapping from rank position to a 1–10 scale.
+Reason: It is simple, predictable, and matches the MVP focus on ordered preference.
 Definition of Done: Ranked movies include an approximate 1–10 rating shown on the ranking page.
-Suggested git commit message: `feat: convert ranked positions into approximate 1-10 scores`
+Suggested git commit message: `feat: convert rank positions into approximate 1-10 scores`
 
 ## 10. Public share page
 
 Task: Add optional public sharing so friends can view the ranking.
 Goal: Provide a read-only page for shared rankings.
-Concern / risk: Building sharing and public access before the core app flow is stable.
-Decision: Treat sharing as an MVP stretch and add it only after the ranking page works.
+Concern / risk: Building sharing and public access before the core flow is stable.
+Decision: Treat sharing as an MVP stretch and add it only after the ranked insertion flow works.
 Reason: This minimizes scope creep while still preserving the feature for a later step.
 Definition of Done: A share slug can be generated and used to load a read-only ranking page.
 Suggested git commit message: `feat: add public share route for ranking page`
@@ -117,7 +117,7 @@ Suggested git commit message: `chore: polish UI and add basic empty states`
 Task: Validate the full user flow and document how to run the app.
 Goal: Ensure the MVP works end to end and can be reproduced by others.
 Concern / risk: Missing regressions or leaving the README incomplete.
-Decision: Manually test the add/compare/rank flow, then document setup and usage.
+Decision: Manually test the add/insert/rank flow, then document setup and usage.
 Reason: Testing confirms the app delivers its main value, and documentation helps future work.
 Definition of Done: Manual flow passes, README includes setup, run instructions, and project overview.
 Suggested git commit message: `docs: add final testing notes and README instructions`
