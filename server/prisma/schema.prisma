@@ -1,0 +1,42 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model MovieList {
+  id          String       @id @default(cuid())
+  name        String?
+  shareSlug   String?      @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  movies      Movie[]
+  comparisons Comparison[]
+}
+
+model Movie {
+  id              String       @id @default(cuid())
+  title           String
+  createdAt       DateTime     @default(now())
+  bucket          String
+  position        Int
+  list            MovieList    @relation(fields: [listId], references: [id])
+  listId          String
+  wonComparisons  Comparison[] @relation("winner")
+  lostComparisons Comparison[] @relation("loser")
+}
+
+model Comparison {
+  id            String    @id @default(cuid())
+  list          MovieList @relation(fields: [listId], references: [id])
+  listId        String
+  bucket        String
+  winner        Movie     @relation("winner", fields: [winnerMovieId], references: [id])
+  winnerMovieId String
+  loser         Movie     @relation("loser", fields: [loserMovieId], references: [id])
+  loserMovieId  String
+  createdAt     DateTime  @default(now())
+}
