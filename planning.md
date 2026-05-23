@@ -31,8 +31,11 @@ Included in the first prototype:
 - A simple ranking calculation based on wins and losses.
 - A ranking page that shows the user's movies in ranked order.
 - An approximate 1-10 score shown next to each ranked movie.
-- A simple public share link for a user's ranking page.
 - Basic styling that is clean and readable.
+
+Optional MVP stretch (build only after the core loop works):
+
+- A simple public share link for a user's ranking page.
 
 Intentionally excluded from the first prototype:
 
@@ -458,75 +461,68 @@ Each step should be small enough to ask Codex to implement one at a time.
 3. Set up Prisma and SQLite.
    - Install Prisma.
    - Create the initial schema.
-   - Add MovieList, Movie, and Comparison models.
+   - Add `MovieList`, `Movie`, and `Comparison` models.
    - Run the first migration.
 
-4. Create movie list routes.
+4. Build the minimal list/movie API.
    - Add route to create a movie list.
-   - Add route to fetch a movie list.
+   - Add route to fetch movies for a list.
+   - Add route to add a movie to a list.
+   - Optionally add route to delete a movie later.
 
-5. Create movie routes.
-   - Add route to list movies.
-   - Add route to create a movie.
-   - Optionally add route to delete a movie.
-
-6. Build the basic React app shell.
+5. Build the basic React app shell.
    - Add frontend routing.
-   - Create Home, Add Movie, Compare, Ranking, and Public Ranking pages.
+   - Create Home, Add Movie, Compare, and Ranking pages.
    - Add simple navigation.
 
-7. Connect Add Movie page to the backend.
-   - Create or load a list ID.
+6. Connect Add Movie page to the backend.
+   - Create or load a list ID in the browser.
    - Add movies through the API.
    - Display saved movies.
 
-8. Build the comparison API.
+7. Build the comparison API.
    - Add route to get two random movies.
    - Add route to save comparison results.
    - Validate that winner and loser are different movies.
 
-9. Build the Compare page.
+8. Build the Compare page.
    - Fetch two movies.
    - Let the user select the preferred movie.
    - Save the comparison.
    - Load the next pair.
 
-10. Build the ranking service.
-    - Count wins and losses.
-    - Calculate score as wins minus losses.
-    - Sort movies into ranked order.
-    - Convert rank position into a 1-10 rating.
+9. Build the ranking service.
+   - Count wins and losses.
+   - Calculate score as wins minus losses.
+   - Sort movies into ranked order.
+   - Convert rank position into a 1-10 rating.
 
-11. Build the Ranking page.
+10. Build the Ranking page.
     - Fetch ranking data from the backend.
     - Display rank, title, wins, losses, score, and approximate rating.
 
-12. Add share link support.
+11. Add public share support (optional MVP stretch).
     - Generate a share slug for each list.
     - Add public route by share slug.
     - Add Share button on the Ranking page.
 
-13. Build the Public Ranking page.
-    - Load ranking data by share slug.
-    - Display ranking in read-only mode.
-
-14. Add basic empty states and error states.
+12. Add basic empty states and error states.
     - No movies yet.
     - Need at least two movies to compare.
     - No comparisons yet.
     - Public link not found.
 
-15. Polish the MVP UI lightly.
+13. Polish the MVP UI lightly.
     - Make pages readable.
     - Keep layout simple.
     - Avoid spending too much time on advanced design.
 
-16. Test the full user flow manually.
+14. Test the full user flow manually.
     - Create a list.
     - Add at least five movies.
     - Make several comparisons.
     - View rankings.
-    - Open the public share page.
+    - Verify share flow only after the core loop works.
 
 ## 11. Risks and Things to Avoid
 
