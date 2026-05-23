@@ -2,24 +2,34 @@
 
 ## 1. Project Overview
 
-This project is a beginner-friendly full-stack movie ranking website. The core idea is to let users add the movies they watched and insert each new movie into an existing ranked list through sequential pairwise comparisons.
+This project is a beginner-friendly full-stack movie ranking website. The core idea is to let users add the movies they watched and place each new movie into one of three broad preference buckets before refining its position inside that bucket.
 
-Rather than treating "add movie" and "compare movies" as separate features, the MVP should make comparison part of the add flow. When a new movie is added, the app should immediately compare it against the ranked list until it can find the correct position.
+The MVP should reduce comparison friction by letting users classify a new movie as:
 
-The app avoids asking for direct numeric ratings. Instead, it asks a simple question about the new movie compared to one ranked movie at a time. This builds an ordered list and then converts the final position into an approximate 1–10 score.
+- I liked it
+- It was fine
+- I didn’t like it
 
-The first version should prove the core loop: add a movie, insert it into the ranking via comparisons, see the ranked list, and optionally share the result.
+After choosing a bucket, the app only compares the new movie against movies already in that bucket. This keeps the experience fast while still producing a full ranked list built from bucket order.
+
+The app avoids asking for direct numeric ratings. Instead, it asks simple questions: first a coarse preference bucket, then a small number of within-bucket comparisons. The final ranking is assembled by combining buckets in this order:
+
+1. I liked it
+2. It was fine
+3. I didn’t like it
+
+The first version should prove the core loop: add a movie, choose a bucket, insert it into the correct position inside that bucket, see the ranked list, and optionally share it.
 
 ## 2. MVP Scope
 
-The MVP should include only the features needed to make the ranked insertion flow work.
+The MVP should include only the features needed to make the bucket-first ranking flow work.
 
 Included in the first prototype:
 
 - A simple home page explaining the app.
-- A single Add Movie page where users add a new movie and, if needed, compare it against ranked movies.
-- Storage for movies, a ranked order, and comparison results.
-- A ranking page that shows the user's movies in ranked order.
+- A single Add Movie page with bucket selection and within-bucket insertion.
+- Storage for movies, bucket labels, bucket position, and comparison decisions.
+- A ranking page that shows the user's full ranked list by bucket and position.
 - An approximate 1–10 score shown next to each ranked movie.
 - Basic styling that is clean and readable.
 
@@ -40,6 +50,7 @@ Intentionally excluded from the first prototype:
 - Admin tools.
 - Email notifications.
 - A separate random pairwise compare page.
+- Comparing a new movie against the entire list.
 
 The MVP should feel like a working prototype, not a complete social product.
 
@@ -77,26 +88,27 @@ For this plan, the suggested structure will assume React + Express + SQLite + Pr
 
 ## 4. Core User Flow
 
-Add and insert a movie:
+Add and place a movie:
 
 1. User opens the app.
 2. User enters a new movie title on the Add Movie page.
-3. If this is the first movie, it becomes ranked position 1 immediately.
-4. If there are existing ranked movies, the app immediately compares the new movie with the movie at rank 1.
-5. If the new movie wins, it is placed above the current movie at that position.
-6. If the new movie loses, the app compares it with the next movie in the ranked list.
-7. The app continues until the new movie finds the correct insertion point or reaches the end.
-8. The movie is inserted into the ranked list.
-9. The app converts the final rank into an approximate 1–10 score.
-10. The user can view the updated ranked list and optionally share it.
+3. User selects a preference bucket: "I liked it", "It was fine", or "I didn’t like it."
+4. If this is the first movie in the bucket and the list is empty, the movie is placed at the top of that bucket.
+5. If there are existing movies in the chosen bucket, the app compares the new movie to the current candidate inside that bucket.
+6. If the new movie wins, it is inserted above the candidate and the bucket positions shift accordingly.
+7. If it loses, the app compares it with the next movie in the same bucket.
+8. The app continues until the new movie finds the correct position or reaches the end of the bucket.
+9. The movie is inserted into the bucket and the full ranking is created by concatenating buckets in this order: liked, fine, disliked.
+10. The app converts the final ranking into an approximate 1–10 score.
+11. The user can view the updated ranked list and optionally share it.
 
-Important: this is not a random pairwise comparison app. The compare flow is only used to insert each new movie into the existing ranking.
+Important: this is not a full pairwise comparison system. The user first chooses a rough preference bucket, and only then makes smaller comparisons within that bucket.
 
 View personal ranking:
 
 1. User opens the Ranking page.
-2. App loads movies in ranked order.
-3. App displays each movie's position and approximate 1–10 rating.
+2. App loads movies grouped by bucket and ordered within each bucket.
+3. App displays each movie's position, bucket label, and approximate 1–10 rating.
 4. Optionally, the user can generate a share link.
 
 Share ranking page:
@@ -113,7 +125,7 @@ Keep the MVP schema small and easy to understand.
 
 ### Movie
 
-Stores movies added by the user and their ordered position.
+Stores movies added by the user, their bucket, and their position inside that bucket.
 
 Fields:
 
@@ -121,7 +133,8 @@ Fields:
 - title: movie title
 - createdAt: date the movie was added
 - listId: ID of the movie list this movie belongs to
-- position: integer ranking position within the list
+- bucket: preference bucket (`liked`, `fine`, or `disliked`)
+- position: integer position within the bucket
 
 ### MovieList
 
@@ -137,12 +150,13 @@ Fields:
 
 ### Comparison
 
-Stores each pairwise comparison result used during insertion.
+Stores optional within-bucket comparison results used during insertion.
 
 Fields:
 
 - id: unique comparison ID
 - listId: ID of the movie list
+- bucket: bucket where the comparison happened
 - winnerMovieId: ID of the movie the user preferred
 - loserMovieId: ID of the movie the user liked less
 - createdAt: date the comparison happened
@@ -150,8 +164,8 @@ Fields:
 MVP recommendation:
 
 - Do not create a separate Ranking table at first.
-- Keep `position` on the Movie model so the ranked order is easy to maintain.
-- Use the Comparison table to store insertion decisions and support future ranking improvements.
+- Keep `bucket` and `position` on the Movie model so ranked order is easy to maintain.
+- Use the Comparison table only if you want to log within-bucket comparisons or support future ranking improvements.
 
 ## 6. Page-by-Page UI Plan
 
@@ -165,7 +179,7 @@ Purpose:
 Main elements:
 
 - App name.
-- Short description: add a movie and insert it into a ranked list by comparing it against existing movies.
+- Short description: add a movie, choose a preference bucket, and insert it into a ranked list.
 - Button to start adding a movie.
 - Link to the Ranking page.
 
@@ -173,18 +187,19 @@ Main elements:
 
 Purpose:
 
-- Let the user add a new movie and insert it into the ranked list.
+- Let the user add a new movie and place it into a bucket.
 
 Main elements:
 
 - Text input for movie title.
+- Bucket selection options: "I liked it", "It was fine", "I didn’t like it."
 - Add Movie button.
-- If this is the first movie, confirm it was ranked position 1.
-- If there are existing movies, show the current comparison candidate.
+- If this is the first movie in the selected bucket, confirm it was placed there.
+- If there are existing movies in that bucket, show the current bucket candidate.
 - Comparison prompt: "Which movie did you like better?"
-- Two movie cards or buttons: the new movie and the current ranked movie candidate.
-- After choosing, show the next comparison or finish insertion.
-- Show the current ranked list so the user understands the order.
+- Two movie cards or buttons: the new movie and the current bucket candidate.
+- After choosing, show the next comparison inside that bucket or finish insertion.
+- Show the current ranked list so the user understands how buckets combine.
 
 ### Ranking Page
 
@@ -194,9 +209,9 @@ Purpose:
 
 Main elements:
 
-- Ranked list from best to lowest.
+- Bucket sections in order: liked, fine, disliked.
 - Movie title.
-- Current ranking position.
+- Position within the bucket.
 - Approximate 1–10 score.
 - Share button.
 - Public share link after generated.
@@ -210,7 +225,7 @@ Purpose:
 Main elements:
 
 - Public list title.
-- Ranked movies.
+- Ranked movies grouped by bucket.
 - Approximate 1–10 ratings.
 - Optional timestamp showing when the ranking was last updated.
 
@@ -239,33 +254,33 @@ POST /api/lists
 
 GET /api/lists/:listId/movies
 
-- Gets all movies in a list in ranked order.
+- Gets all movies in a list grouped by bucket and ordered within buckets.
 
 POST /api/lists/:listId/movies
 
 - Adds a new movie to a list.
-- Request body includes the movie title.
-- If there are existing movies, the response can include the first comparison candidate.
+- Request body includes the movie title and selected bucket.
+- If there are existing movies in the selected bucket, the response can include the first comparator movie.
 
 DELETE /api/lists/:listId/movies/:movieId
 
 - Deletes a movie from a list.
 - Optional for MVP, but useful.
 
-### Insertion Comparison Routes
+### Bucket Comparison Routes
 
 POST /api/lists/:listId/movies/:movieId/compare
 
-- Saves a comparison result for a newly added movie.
-- Request body includes the existing candidate movie and the winner.
-- Returns the next candidate or the final insertion position.
+- Saves a within-bucket comparison result.
+- Request body includes the current candidate movie ID and the winner.
+- Returns the next candidate or the final insertion position inside the bucket.
 
 ### Ranking Routes
 
 GET /api/lists/:listId/rankings
 
-- Returns movies in ranked order.
-- Includes position and approximate 1–10 rating.
+- Returns movies grouped by bucket and ordered within each bucket.
+- Includes bucket label, within-bucket position, and approximate 1–10 rating.
 
 ### Share Routes
 
@@ -280,47 +295,50 @@ GET /api/public/:shareSlug
 
 ## 8. Ranking Algorithm
 
-Start with the simplest possible ranking algorithm.
+Start with the simplest possible bucket-first ranking algorithm.
 
-For the MVP, keep a ranked list of movies and insert each new movie into that list using a linear compare flow.
+For the MVP, assign each movie to one of three buckets and place it into the correct position within that bucket.
 
-Insertion algorithm:
+Bucket-first insertion algorithm:
 
-1. Keep movies sorted by `position`.
-2. When a new movie is added and there are existing movies, start by comparing it with the movie at position 1.
-3. If the new movie wins, insert it above the current movie and shift later movies down.
-4. If the new movie loses, compare it with the next movie in the list.
-5. Continue until the correct position is found or the end of the list is reached.
-6. If the new movie loses to every existing candidate, place it at the bottom.
-7. Update `position` values for affected movies.
+1. Each movie has a `bucket` (`liked`, `fine`, or `disliked`) and a `position` within that bucket.
+2. When a new movie is added, the user selects one bucket.
+3. If the chosen bucket is empty, place the movie at position 1 in that bucket.
+4. If the bucket contains movies, compare the new movie with the current bucket candidate starting at position 1.
+5. If the new movie wins, insert it above that candidate and shift later positions down.
+6. If it loses, compare it with the next movie in the bucket.
+7. Continue until the correct position is found or the end of the bucket is reached.
+8. If the new movie loses to every candidate in the bucket, place it at the bottom of that bucket.
+9. The full ranked list is created by concatenating buckets in this order: liked, fine, disliked.
 
-This linear insertion approach is the simplest way to build the core flow. Later, it can be improved with binary insertion, Elo, or more advanced pairwise ranking.
+This bucket-first insertion approach keeps comparison friction low and still builds a sensible ranked list. Later, it can be improved with binary insertion, Elo, or smarter active ranking.
 
-Approximate 1-10 rating:
+Approximate 1–10 score conversion:
 
-- If there is only one movie, rating = 10.
-- Otherwise, convert the position into a score between 10 and 1.
-- Use a linear mapping from rank position to the 1–10 range.
+- Use bucket order to define broad score ranges.
+- Map liked movies to the top score range, fine to the middle range, and disliked to the bottom range.
+- Within each bucket, spread scores linearly by position.
 
-Example with 5 movies:
+Example with a small ranked list:
 
-- Position 1: 10.0
-- Position 2: 7.8
-- Position 3: 5.5
-- Position 4: 3.3
-- Position 5: 1.0
+- Top liked movie: 10.0
+- Lower liked movie: 8.0
+- Top fine movie: 7.0
+- Lower fine movie: 5.0
+- Top disliked movie: 4.0
+- Lower disliked movie: 1.0
 
 Important limitation:
 
-- This is not a perfect rating system.
-- It is simple and understandable, which is good for the MVP.
-- It may not perfectly reflect every comparison history, but it gives a clear ranked order.
+- This score is approximate and designed for the MVP.
+- It is simple and understandable, which is good for early use.
+- It may not capture fine-grained preference differences across buckets.
 
 Future upgrade:
 
-- Replace linear insertion with binary insertion to compare fewer movies.
+- Replace linear bucket insertion with binary insertion inside each bucket.
 - Build a more statistical ranking model such as Elo.
-- Use comparison history to refine placement confidence.
+- Use comparison history to refine bucket placement confidence.
 
 ## 9. Folder Structure
 
