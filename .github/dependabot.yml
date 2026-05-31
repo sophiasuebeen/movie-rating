@@ -1,0 +1,34 @@
+version: 2
+updates:
+  # Enable version updates for npm
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "03:00"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "subiniiigiyowo"
+    labels:
+      - "dependencies"
+      - "javascript"
+    allow:
+      - dependency-type: "all"
+    ignore:
+      # Ignore major updates that might require significant refactoring
+      - dependency-name: "react"
+        update-types: ["version-update:semver-major"]
+
+  # Docker updates
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "04:00"
+    reviewers:
+      - "subiniiigiyowo"
+    labels:
+      - "dependencies"
+      - "docker"

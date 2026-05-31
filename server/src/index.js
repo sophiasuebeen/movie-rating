@@ -1,9 +1,20 @@
 const crypto = require('crypto');
 const express = require('express');
+const morgan = require('morgan');
 const { PrismaClient } = require('@prisma/client');
 
+const config = require('./config');
+const { corsMiddleware, errorHandler, notFoundHandler, validateRequest } = require('./middleware');
+const {
+  createListSchema,
+  addMovieSchema,
+  compareMovieSchema,
+  getMoviesSchema,
+  shareListSchema,
+  getPublicRankingSchema,
+} = require('./validation');
+
 const app = express();
-const port = process.env.PORT || 4000;
 const prisma = new PrismaClient();
 const validBuckets = new Set(['liked', 'fine', 'disliked']);
 const bucketOrder = [
@@ -16,6 +27,8 @@ const scoreRanges = {
   fine: { min: 4.0, max: 6.9 },
   disliked: { min: 1.0, max: 3.9 },
 };
+
+// ============ HELPER FUNCTIONS ============
 
 function calculateScore(bucket, position, bucketSize) {
   const range = scoreRanges[bucket];
@@ -36,68 +49,64 @@ function calculateScore(bucket, position, bucketSize) {
 }
 
 function buildBucketGroups(movies) {
-  return bucketOrder.map(({ bucket, label }) => ({
-    bucket,
-    label,
-    movies: movies
-      .filter((movie) => movie.bucket === bucket)
-      .sort((firstMovie, secondMovie) => firstMovie.position - secondMovie.position),
-  })).map((bucketGroup) => ({
-    ...bucketGroup,
-    movies: bucketGroup.movies.map((movie) => ({
-      ...movie,
-      score: calculateScore(bucketGroup.bucket, movie.position, bucketGroup.movies.length),
-    })),
-  }));
+  return bucketOrder
+    .map(({ bucket, label }) => ({
+      bucket,
+      label,
+      movies: movies
+        .filter((movie) => movie.bucket === bucket)
+        .sort((firstMovie, secondMovie) => firstMovie.position - secondMovie.position),
+    }))
+    .map((bucketGroup) => ({
+      ...bucketGroup,
+      movies: bucketGroup.movies.map((movie) => ({
+        ...movie,
+        score: calculateScore(bucketGroup.bucket, movie.position, bucketGroup.movies.length),
+      })),
+    }));
 }
 
 function createShareSlug() {
   return crypto.randomBytes(6).toString('base64url');
 }
 
-app.use(express.json());
+// ============ MIDDLEWARE ============
 
-app.use((req, res, next) => {
-  const allowedOrigins = new Set(['http://localhost:5173', 'http://127.0.0.1:5173']);
-  const origin = req.headers.origin;
+app.use(express.json({ limit: '10mb' }));
+app.use(corsMiddleware);
 
-  if (allowedOrigins.has(origin)) {
-    res.setHeader('Access-Control-Allow-Origin', origin);
-  }
+if (config.isDev) {
+  app.use(morgan('dev'));
+} else {
+  app.use(morgan('combined'));
+}
 
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
-
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(204);
-  }
-
-  next();
-});
+// ============ ROUTES ============
 
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+  res.json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
-app.post('/api/lists', async (req, res) => {
+app.post('/api/lists', validateRequest(createListSchema), async (req, res, next) => {
   try {
+    const { body } = req.validated;
     const list = await prisma.movieList.create({
       data: {
-        name: req.body.name || 'My Movie Ranking',
+        name: body.name || 'My Movie Ranking',
       },
     });
 
     res.status(201).json(list);
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to create list.' });
+    next(error);
   }
 });
 
-app.get('/api/lists/:listId/movies', async (req, res) => {
-  const { listId } = req.params;
-
+app.get('/api/lists/:listId/movies', validateRequest(getMoviesSchema), async (req, res, next) => {
   try {
+    const { params } = req.validated;
+    const { listId } = params;
+
     const list = await prisma.movieList.findUnique({
       where: { id: listId },
       select: { id: true },
@@ -116,13 +125,14 @@ app.get('/api/lists/:listId/movies', async (req, res) => {
 
     res.json({ listId, buckets });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to load movies.' });
+    next(error);
   }
 });
 
-app.post('/api/lists/:listId/share', async (req, res) => {
-  const { listId } = req.params;
+app.post('/api/lists/:listId/share', validateRequest(shareListSchema), async (req, res, next) => {
+  try {
+    const { params } = req.validated;
+    const { listId } = params;
 
   try {
     const list = await prisma.movieList.findUnique({
@@ -161,13 +171,14 @@ app.post('/api/lists/:listId/share', async (req, res) => {
 
     res.status(201).json({ shareSlug: updatedList.shareSlug });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to create share link.' });
+    next(error);
   }
 });
 
-app.get('/api/public/:shareSlug', async (req, res) => {
-  const { shareSlug } = req.params;
+app.get('/api/public/:shareSlug', validateRequest(getPublicRankingSchema), async (req, res, next) => {
+  try {
+    const { params } = req.validated;
+    const { shareSlug } = params;
 
   try {
     const list = await prisma.movieList.findUnique({
@@ -196,25 +207,15 @@ app.get('/api/public/:shareSlug', async (req, res) => {
       buckets: buildBucketGroups(movies),
     });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to load shared ranking.' });
+    next(error);
   }
 });
 
-app.post('/api/lists/:listId/movies', async (req, res) => {
-  const { listId } = req.params;
-  const { title, bucket } = req.body;
-  const trimmedTitle = typeof title === 'string' ? title.trim() : '';
-
-  if (!trimmedTitle) {
-    return res.status(400).json({ error: 'Title is required.' });
-  }
-
-  if (!validBuckets.has(bucket)) {
-    return res.status(400).json({ error: 'Bucket must be one of: liked, fine, disliked.' });
-  }
-
+app.post('/api/lists/:listId/movies', validateRequest(addMovieSchema), async (req, res, next) => {
   try {
+    const { body, params } = req.validated;
+    const { listId } = params;
+    const { title, bucket } = body;
     const list = await prisma.movieList.findUnique({
       where: { id: listId },
       select: { id: true },
@@ -255,20 +256,15 @@ app.post('/api/lists/:listId/movies', async (req, res) => {
 
     res.status(201).json({ complete: false, movie, candidate: rankedMovies[0] });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to create movie.' });
+    next(error);
   }
 });
 
-app.post('/api/lists/:listId/movies/:movieId/compare', async (req, res) => {
-  const { listId, movieId } = req.params;
-  const { candidateMovieId, winnerMovieId } = req.body;
-
-  if (!candidateMovieId || !winnerMovieId) {
-    return res.status(400).json({ error: 'Candidate movie and winner are required.' });
-  }
-
+app.post('/api/lists/:listId/movies/:movieId/compare', validateRequest(compareMovieSchema), async (req, res, next) => {
   try {
+    const { body, params } = req.validated;
+    const { listId, movieId } = params;
+    const { candidateMovieId, winnerMovieId } = body;
     const pendingMovie = await prisma.movie.findFirst({
       where: { id: movieId, listId, status: 'pending' },
     });
@@ -367,15 +363,33 @@ app.post('/api/lists/:listId/movies/:movieId/compare', async (req, res) => {
 
     res.json({ complete: true, movie });
   } catch (error) {
-    console.error(error);
-    res.status(500).json({ error: 'Failed to save comparison.' });
+    next(error);
   }
 });
 
-app.use('/api', (req, res) => {
-  res.status(404).json({ error: `API route not found: ${req.method} ${req.originalUrl}` });
-});
+// ============ ERROR HANDLING ============
+
+app.use(notFoundHandler);
+app.use(errorHandler);
+
+// ============ SERVER STARTUP ============
+
+const port = config.port;
 
 app.listen(port, () => {
-  console.log(`Server running on http://localhost:${port}`);
+  console.log(`🎬 Movie Rating server running on http://localhost:${port}`);
+  console.log(`Environment: ${config.nodeEnv}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', async () => {
+  console.log('SIGTERM received, shutting down gracefully');
+  await prisma.$disconnect();
+  process.exit(0);
+});
+
+process.on('SIGINT', async () => {
+  console.log('SIGINT received, shutting down gracefully');
+  await prisma.$disconnect();
+  process.exit(0);
 });

@@ -1,0 +1,89 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  lint-and-test:
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm install
+      
+      - name: Install server dependencies
+        run: npm --prefix server install
+      
+      - name: Install client dependencies
+        run: npm --prefix client install
+      
+      - name: Lint backend code
+        run: npm --prefix server run lint --if-present || echo "No lint script defined"
+      
+      - name: Run backend tests
+        run: npm --prefix server test
+      
+      - name: Lint frontend code
+        run: npm --prefix client run lint --if-present || echo "No lint script defined"
+      
+      - name: Run frontend tests
+        run: npm --prefix client test
+      
+      - name: Build frontend
+        run: npm --prefix client run build
+
+  security-audit:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Run npm audit
+        run: npm audit --production || true
+      
+      - name: Check dependencies
+        run: npm audit fix --audit-level=moderate --dry-run || true
+
+  build-docker:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    
+    permissions:
+      contents: read
+      packages: write
+    
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+      
+      - name: Build Docker images
+        run: docker-compose build --no-cache
+      
+      - name: Test Docker build
+        run: docker-compose config
+
+  notify:
+    runs-on: ubuntu-latest
+    if: always()
+    needs: [lint-and-test, security-audit, build-docker]
+    
+    steps:
+      - name: Print job status
+        run: echo "Pipeline completed with status: ${{ job.status }}"

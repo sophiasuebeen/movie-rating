@@ -1,0 +1,17 @@
+{
+  "name": "movie-rating",
+  "version": "1.0.0",
+  "description": "A bucket-first movie ranking application",
+  "private": true,
+  "scripts": {
+    "dev": "concurrently \"npm --prefix server run dev\" \"npm --prefix client run dev\"",
+    "start": "npm --prefix server start",
+    "build": "npm --prefix client build",
+    "install:all": "npm install && npm --prefix server install && npm --prefix client install",
+    "test": "npm --prefix server test",
+    "test:e2e": "npm --prefix client run test:e2e"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}
